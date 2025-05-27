@@ -31,7 +31,7 @@ scanBtn.addEventListener('click', async () => {
       const characteristics = await service.getCharacteristics();
 
       for (const char of characteristics) {
-        if (char.uuid.toLowerCase() === TARGET_UUID && char.properties.notify) {
+       if ((char.uuid.toLowerCase().includes('ffe1')) && char.properties.notify) {
           await char.startNotifications();
           char.addEventListener('characteristicvaluechanged', (event) => {
             const value = new TextDecoder().decode(event.target.value);
