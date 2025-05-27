@@ -3,46 +3,57 @@ const deviceListDiv = document.getElementById('deviceList');
 const log = document.getElementById('log');
 
 let connectedDevices = [];
-const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+const TARGET_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
 scanBtn.addEventListener('click', async () => {
   try {
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'CRONOPIC-F' }]
-      // no optionalServices
+      // NO optionalServices
     });
 
     const name = device.name || 'Unnamed';
-    if (/^CRONOPIC-F[1-9]$/.test(name)) {
-      const div = document.createElement('div');
-      div.textContent = `Conectando a ${name}...`;
-      deviceListDiv.appendChild(div);
+    if (!/^CRONOPIC-F[1-9]$/.test(name)) {
+      appendLog(`⚠️ Dispositivo no válido: ${name}`);
+      return;
+    }
 
-      const server = await device.gatt.connect();
-      const services = await server.getPrimaryServices();
+    const div = document.createElement('div');
+    div.textContent = `Conectando a ${name}...`;
+    deviceListDiv.appendChild(div);
 
-      for (const service of services) {
-        try {
-          const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
-          await characteristic.startNotifications();
-          characteristic.addEventListener('characteristicvaluechanged', (event) => {
+    const server = await device.gatt.connect();
+    const services = await server.getPrimaryServices();
+
+    let found = false;
+
+    for (const service of services) {
+      const characteristics = await service.getCharacteristics();
+
+      for (const char of characteristics) {
+        if (char.uuid.toLowerCase() === TARGET_UUID && char.properties.notify) {
+          await char.startNotifications();
+          char.addEventListener('characteristicvaluechanged', (event) => {
             const value = new TextDecoder().decode(event.target.value);
             appendLog(`${name}: ${value}`);
           });
 
-          connectedDevices.push({ device, characteristic });
-          appendLog(`✅ Conectado a ${name} (servicio: ${service.uuid})`);
+          connectedDevices.push({ device, characteristic: char });
+          appendLog(`✅ Conectado a ${name} (char: ${char.uuid})`);
           div.textContent = `✅ ${name} conectado`;
-          return;
-        } catch (_) {
-          // no pasa nada, probamos con el siguiente servicio
+          found = true;
+          break;
         }
       }
 
-      appendLog(`⚠️ ${name}: característica FFE1 no encontrada`);
-    } else {
-      appendLog(`⚠️ Dispositivo no válido: ${name}`);
+      if (found) break;
     }
+
+    if (!found) {
+      appendLog(`❌ ${name}: característica FFE1 no encontrada`);
+      div.textContent = `❌ ${name}: sin FFE1`;
+    }
+
   } catch (error) {
     console.error(error);
     appendLog(`❌ ERROR: ${error.message}`);
