@@ -3,14 +3,13 @@ const deviceListDiv = document.getElementById('deviceList');
 const log = document.getElementById('log');
 
 let connectedDevices = [];
-const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
 const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 
 scanBtn.addEventListener('click', async () => {
   try {
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'CRONOPIC-F' }],
-      optionalServices: [SERVICE_UUID]
+      optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb', '0000ffe1-0000-1000-8000-00805f9b34fb']
     });
 
     const name = device.name || 'Unnamed';
@@ -24,18 +23,36 @@ scanBtn.addEventListener('click', async () => {
     deviceListDiv.appendChild(div);
 
     const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(SERVICE_UUID);
-    const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+    const services = await server.getPrimaryServices();
 
-    await characteristic.startNotifications();
-    characteristic.addEventListener('characteristicvaluechanged', (event) => {
-      const value = new TextDecoder().decode(event.target.value);
-      appendLog(`${name}: ${value}`);
-    });
+    let found = false;
 
-    connectedDevices.push({ device, characteristic });
-    appendLog(`✅ Conectado a ${name}`);
-    div.textContent = `✅ ${name} conectado`;
+    for (const service of services) {
+      const characteristics = await service.getCharacteristics();
+
+      for (const char of characteristics) {
+        if (char.uuid.toLowerCase().includes('ffe1') && char.properties.notify) {
+          await char.startNotifications();
+          char.addEventListener('characteristicvaluechanged', (event) => {
+            const value = new TextDecoder().decode(event.target.value);
+            appendLog(`${name}: ${value}`);
+          });
+
+          connectedDevices.push({ device, characteristic: char });
+          appendLog(`✅ Conectado a ${name} (char: ${char.uuid})`);
+          div.textContent = `✅ ${name} conectado`;
+          found = true;
+          break;
+        }
+      }
+
+      if (found) break;
+    }
+
+    if (!found) {
+      appendLog(`❌ ${name}: característica FFE1 no encontrada`);
+      div.textContent = `❌ ${name}: sin FFE1`;
+    }
 
   } catch (error) {
     console.error(error);
