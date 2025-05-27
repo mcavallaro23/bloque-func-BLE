@@ -8,8 +8,8 @@ const CHARACTERISTIC_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
 scanBtn.addEventListener('click', async () => {
   try {
     const device = await navigator.bluetooth.requestDevice({
-      filters: [{ namePrefix: 'CRONOPIC-F' }],
-      optionalServices: [CHARACTERISTIC_UUID]
+      filters: [{ namePrefix: 'CRONOPIC-F' }]
+      // no optionalServices
     });
 
     const name = device.name || 'Unnamed';
@@ -19,18 +19,27 @@ scanBtn.addEventListener('click', async () => {
       deviceListDiv.appendChild(div);
 
       const server = await device.gatt.connect();
-      const service = await server.getPrimaryService(CHARACTERISTIC_UUID);
-      const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+      const services = await server.getPrimaryServices();
 
-      await characteristic.startNotifications();
-      characteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const value = new TextDecoder().decode(event.target.value);
-        appendLog(`${name}: ${value}`);
-      });
+      for (const service of services) {
+        try {
+          const characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+          await characteristic.startNotifications();
+          characteristic.addEventListener('characteristicvaluechanged', (event) => {
+            const value = new TextDecoder().decode(event.target.value);
+            appendLog(`${name}: ${value}`);
+          });
 
-      connectedDevices.push({ device, characteristic });
-      appendLog(`✅ Conectado a ${name}`);
-      div.textContent = `✅ ${name} conectado`;
+          connectedDevices.push({ device, characteristic });
+          appendLog(`✅ Conectado a ${name} (servicio: ${service.uuid})`);
+          div.textContent = `✅ ${name} conectado`;
+          return;
+        } catch (_) {
+          // no pasa nada, probamos con el siguiente servicio
+        }
+      }
+
+      appendLog(`⚠️ ${name}: característica FFE1 no encontrada`);
     } else {
       appendLog(`⚠️ Dispositivo no válido: ${name}`);
     }
